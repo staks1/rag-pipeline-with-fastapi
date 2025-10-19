@@ -11,9 +11,9 @@ class Embeddingmodel:
         self.model = None
 
     def load_model(self):
-        self.model = BGEM3FlagModel(
-            os.environ["EMBEDDER_MODEL"], use_fp16=True, devices="cpu"
-        )
+        model_name = os.environ["EMBEDDER_MODEL"]
+        print(f"Loading embedding model : {model_name}")
+        self.model = BGEM3FlagModel(model_name, use_fp16=True, devices="cpu")
 
     def embed_query(self, query: str) -> np.float16:
         if not self.model:
