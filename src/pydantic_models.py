@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from bson.objectid import ObjectId
 
 
 class Query(BaseModel):
@@ -7,3 +8,44 @@ class Query(BaseModel):
 
 class Ragresult(BaseModel):
     answer: str
+
+
+class Mongocompatmodel(BaseModel):
+    # the default_factory is called in python so no serialization is needed for the id
+    id: ObjectId = Field(default_factory=ObjectId, alias="_id")
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+# Pydantic Models for db
+class Averagemetrics(BaseModel):
+    avg_latency: float
+    avg_prompt_tokens: float
+    avg_completion_tokens: float
+    cache_hit_rate: float
+    avg_top_k_score: float
+
+
+class Basecost(BaseModel):
+    price_per_1_input_token: int
+    price_per_1_output_token: int
+
+
+class PerquerymetricsPost(Mongocompatmodel):
+    total_llm_input_cost: float
+    total_llm_output_cost: float
+    latency_ms: float
+    prompt_tokens: int
+    completion_tokens: int
+    # query_title: str
+
+
+class Perquerymetricscreate(BaseModel):
+    total_llm_input_cost: float
+    total_llm_output_cost: float
+    latency_ms: float
+    prompt_tokens: int
+    completion_tokens: int
+    # query_title: str = None

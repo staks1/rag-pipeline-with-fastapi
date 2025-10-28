@@ -12,6 +12,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 import tiktoken
 from typing import List
 from itertools import combinations
+import json
 
 
 load_dotenv()
