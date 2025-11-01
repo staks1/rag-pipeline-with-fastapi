@@ -13,6 +13,7 @@ import tiktoken
 from typing import List
 from itertools import combinations
 import json
+import re
 
 
 load_dotenv()
@@ -119,6 +120,10 @@ def query_all_chunks_from_doc_winner(
             ]
         ),
     )
+    # here we concat all text from each point (we need a reranker here!)
+    # or some way to remove duplicate info and restructure the points in logical sentences
+    # this is a simple merging process
+    query_result = " ".join([x.payload["text"] for x in query_result.points])
     return query_result
 
 
