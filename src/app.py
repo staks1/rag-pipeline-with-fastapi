@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from pydantic_models import (
+    Perqueryaveragemetrics,
     Query,
     Ragresult,
     Averagemetrics,
@@ -30,11 +31,11 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
     AsyncIOMotorCollection,
 )
-
+import tiktoken
 
 # load .env
 load_dotenv()
-
+enc = tiktoken.encoding_for_model("gpt-4")
 
 # initialize the class
 embedding_model = Embeddingmodel()
@@ -100,8 +101,25 @@ async def calculate_and_store_query_cost(query_cost: Perquerymetricscreate):
 #     return avg_metric
 
 
+def calculate_query_metric(
+    qcompletion_tokens: float,
+    qlatency: float,
+    qprompt_tokens: float,
+    qtop_k_score: float,
+    qcache_hit_rate: float,
+) -> Perqueryaveragemetrics:
+    query_metrics = Perqueryaveragemetrics(
+        completion_tokens=qcompletion_tokens,
+        latency=qlatency,
+        prompt_tokens=qprompt_tokens,
+        topk_score=qtop_k_score,
+        cache_hit_rate=qcache_hit_rate,
+    )
+    return query_metrics.model_dump()
+
+
 @app.get("/get_avgmetrics", response_model=Averagemetrics)
-async def get_the_avg_metrics():
+async def get_avg_metrics():
     all_avg_metrics = []
     avg_metric = app.state.db["average_metrics"].find({})
     if avg_metric is None:
@@ -109,6 +127,60 @@ async def get_the_avg_metrics():
     async for x in avg_metric:
         all_avg_metrics.append(x)
     return all_avg_metrics[0]
+
+
+def calculate_new_avg_values(
+    current_avg_metric: Averagemetrics, current_query: Perqueryaveragemetrics
+) -> Averagemetrics:
+    # do the calculations
+    new_total = current_avg_metric["total"] + 1
+
+    total_completion_tokens = (
+        current_avg_metric["total_completion_tokens"]
+        + current_query["completion_tokens"]
+    )
+    total_latency = current_avg_metric["total_latency"] + current_query["latency"]
+    total_prompt_tokens = (
+        current_avg_metric["total_prompt_tokens"] + current_query["prompt_tokens"]
+    )
+    total_topk_score = (
+        current_avg_metric["total_topk_score"] + current_query["topk_score"]
+    )
+    total_cache_hit_rate = (
+        current_avg_metric["total_cache_hit_rate"] + current_query["cache_hit_rate"]
+    )
+
+    new_avg_dict = {
+        "total_completion_tokens": total_completion_tokens,
+        "total_latency": total_latency,
+        "total_prompt_tokens": total_prompt_tokens,
+        "total_topk_score": total_topk_score,
+        "total_cache_hit_rate": total_cache_hit_rate,
+        "avg_completion_tokens": total_completion_tokens / new_total,
+        "avg_latency": total_latency / new_total,
+        "avg_prompt_tokens": total_prompt_tokens / new_total,
+        "avg_top_k_score": total_topk_score / new_total,
+        "avg_cache_hit_rate": total_cache_hit_rate / new_total,
+        "total": new_total,
+    }
+    # we use unset=True to drop the fields that need to stay the same (the total values)
+    new_average = Averagemetrics(**new_avg_dict)
+    return new_average
+
+
+@app.patch("/get_avgmetrics/", response_model=Averagemetrics)
+async def update_avg_metrics(
+    current_average: Averagemetrics = Depends(get_avg_metrics),
+    current_query: Perqueryaveragemetrics = Depends(calculate_query_metric),
+):
+    print("avg metric model", current_average)
+    print("curent query model", current_query)
+    avg_key = os.environ["AVG_METRICS_ID"]
+    new_avg = calculate_new_avg_values(current_average, current_query)
+    await app.state.db["average_metrics"].update_one(
+        {"_id": avg_key}, {"$set": new_avg.model_dump()}
+    )
+    return new_avg
 
 
 @app.get("/get_base_costs", response_model=Basecost)
@@ -164,6 +236,13 @@ def rag_questions(query: Query) -> str:
         print(f"-----new context----- \n: {total_context}")
 
         # calculate the cost of input + output
+        # TODO : here we need to concat the text parts of all returned points (only the text part)
+        # and maybe use a reranker here
+
+        # count tokens
+        total_tokens = len(enc.encode(user_prompt(query, total_context)))
+        print("sending new prompt : ", user_prompt(query, total_context))
+        print("Sending query + new context to llm : ", total_tokens)
 
         # Now we have the enriched context we can ask again the llm adding the question and the context
         completion = call_llm_with_retry(
