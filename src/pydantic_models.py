@@ -24,8 +24,15 @@ class Averagemetrics(BaseModel):
     avg_latency: float
     avg_prompt_tokens: float
     avg_completion_tokens: float
-    cache_hit_rate: float
+    avg_cache_hit_rate: float
     avg_top_k_score: float
+    # add the totals
+    total_completion_tokens: float
+    total_latency: float
+    total_prompt_tokens: float
+    total_topk_score: float
+    total_cache_hit_rate: float
+    total: int
 
 
 class Basecost(BaseModel):
@@ -49,3 +56,13 @@ class Perquerymetricscreate(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     # query_title: str = None
+
+
+# this is a model used to calculate the metrics for a query
+# that need to be used for the running average calculation
+class Perqueryaveragemetrics(BaseModel):
+    completion_tokens: float
+    latency: float
+    prompt_tokens: float
+    topk_score: float
+    cache_hit_rate: float
